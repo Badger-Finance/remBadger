@@ -45,7 +45,10 @@ import "../interfaces/setth/IGac.sol";
     * DepositBricked to track when deposits can no longer be done (irreversible)
 
     V1.Rem2.0
-    * Modifies deposit function to allow for a one-time, single deposit of a whitelisted user
+    * Introduces function to enable deposits after they have been bricked
+    * Removes the governance only modifier from the _depositFor function
+    * Intended to allow for a single deposit from a single user, enforced via Guestlist (BIP 103 - Amendment 3)
+    * Reference: https://forum.badger.finance/t/bip-103-restitution-amendments/6184/5
 */
 
 contract RemBadger is ERC20Upgradeable, SettAccessControlDefended, PausableUpgradeable {
@@ -74,6 +77,7 @@ contract RemBadger is ERC20Upgradeable, SettAccessControlDefended, PausableUpgra
     event FullPricePerShareUpdated(uint256 value, uint256 indexed timestamp, uint256 indexed blockNumber);
 
     event DepositBricked(uint256 indexed timestamp);
+    event DepositEnabled(uint256 indexed timestamp);
 
     modifier whenNotPaused() override {
         require(!paused(), "Pausable: paused");
@@ -118,6 +122,14 @@ contract RemBadger is ERC20Upgradeable, SettAccessControlDefended, PausableUpgra
         depositsEnded = true;
 
         emit DepositBricked(block.timestamp);
+    }
+
+    /// @dev Sets `depositsEnded` to false, enabling deposits
+    function enableDeposits() public {
+        _onlyGovernance();
+        depositsEnded = false;
+
+        emit DepositEnabled(block.timestamp);
     }
 
     /// @dev Mint more shares, diluting the ppfs
@@ -345,7 +357,6 @@ contract RemBadger is ERC20Upgradeable, SettAccessControlDefended, PausableUpgra
 
     function _depositFor(address recipient, uint256 _amount) internal virtual {
         require(!depositsEnded, "No longer accepting Deposits");
-        _onlyGovernance();
         uint256 _pool = balance();
         uint256 _before = token.balanceOf(address(this));
         token.safeTransferFrom(msg.sender, address(this), _amount);
