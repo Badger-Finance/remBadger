@@ -48,17 +48,12 @@ import "../interfaces/setth/IGac.sol";
     * Modifies deposit function to allow for a one-time, single deposit of a whitelisted user
 */
 
-contract RemBadger is
-    ERC20Upgradeable,
-    SettAccessControlDefended,
-    PausableUpgradeable
-{
+contract RemBadger is ERC20Upgradeable, SettAccessControlDefended, PausableUpgradeable {
     using SafeERC20Upgradeable for IERC20Upgradeable;
     using AddressUpgradeable for address;
     using SafeMathUpgradeable for uint256;
 
-    address public constant MULTISIG =
-        0x9faA327AAF1b564B569Cb0Bc0FDAA87052e8d92c;
+    address constant public MULTISIG = 0x9faA327AAF1b564B569Cb0Bc0FDAA87052e8d92c;
     IGac public constant GAC = IGac(0x9c58B0D88578cd75154Bdb7C8B013f7157bae35a); // Set in initializer because of tests is unchangeable (because contract is upgradeable)
 
     IERC20Upgradeable public token;
@@ -71,16 +66,12 @@ contract RemBadger is
     mapping(address => uint256) public blockLock;
 
     address public guardian;
-
+    
     // Packed in same slot (and I believe the slot goes hot in deposits so ideal)
     BadgerGuestListAPI public guestList;
     bool public depositsEnded;
 
-    event FullPricePerShareUpdated(
-        uint256 value,
-        uint256 indexed timestamp,
-        uint256 indexed blockNumber
-    );
+    event FullPricePerShareUpdated(uint256 value, uint256 indexed timestamp, uint256 indexed blockNumber);
 
     event DepositBricked(uint256 indexed timestamp);
 
@@ -113,15 +104,12 @@ contract RemBadger is
 
         min = 9500;
 
-        emit FullPricePerShareUpdated(
-            getPricePerFullShare(),
-            now,
-            block.number
-        );
+        emit FullPricePerShareUpdated(getPricePerFullShare(), now, block.number);
 
         // Paused on launch
         _pause();
     }
+
 
     /// @dev Sets `depositsEnded` to true blocking deposits forever
     /// @notice automatically called when calling `mintExtra`
@@ -135,12 +123,9 @@ contract RemBadger is
     /// @dev Mint more shares, diluting the ppfs
     /// @notice This bricks deposit to avoid griefing, can only call once!!
     function mintExtra(uint256 amount) external {
-        require(
-            !depositsEnded,
-            "You can mint extra only until you brick deposits"
-        );
+        require(!depositsEnded, "You can mint extra only until you brick deposits");
         _onlyGovernance();
-
+        
         // Mint Tokens, diluting the ppfs of tokens below 1
         _mint(msg.sender, amount);
 
@@ -155,10 +140,7 @@ contract RemBadger is
     }
 
     function _onlyAuthorizedPausers() internal view {
-        require(
-            msg.sender == guardian || msg.sender == governance,
-            "onlyPausers"
-        );
+        require(msg.sender == guardian || msg.sender == governance, "onlyPausers");
     }
 
     function _blockLocked() internal view {
@@ -175,7 +157,7 @@ contract RemBadger is
         return "1.4r - remBadger";
     }
 
-    function getPricePerFullShare() public view virtual returns (uint256) {
+    function getPricePerFullShare() public virtual view returns (uint256) {
         if (totalSupply() == 0) {
             return 1e18;
         }
@@ -184,17 +166,14 @@ contract RemBadger is
 
     /// @notice Return the total balance of the underlying token within the system
     /// @notice Sums the balance in the Sett, the Controller, and the Strategy
-    function balance() public view virtual returns (uint256) {
-        return
-            token.balanceOf(address(this)).add(
-                IController(controller).balanceOf(address(token))
-            );
+    function balance() public virtual view returns (uint256) {
+        return token.balanceOf(address(this)).add(IController(controller).balanceOf(address(token)));
     }
 
     /// @notice Defines how much of the Setts' underlying can be borrowed by the Strategy for use
     /// @notice Custom logic in here for how much the vault allows to be borrowed
     /// @notice Sets minimum required on-hand to keep small withdrawals cheap
-    function available() public view virtual returns (uint256) {
+    function available() public virtual view returns (uint256) {
         return token.balanceOf(address(this)).mul(min).div(max);
     }
 
@@ -212,10 +191,7 @@ contract RemBadger is
     }
 
     /// @notice Deposit variant with proof for merkle guest list
-    function deposit(uint256 _amount, bytes32[] memory proof)
-        public
-        whenNotPaused
-    {
+    function deposit(uint256 _amount, bytes32[] memory proof) public whenNotPaused {
         _defend();
         _blockLocked();
         _blacklisted(msg.sender);
@@ -232,10 +208,7 @@ contract RemBadger is
         _blacklisted(msg.sender);
 
         _lockForBlock(msg.sender);
-        _depositWithAuthorization(
-            token.balanceOf(msg.sender),
-            new bytes32[](0)
-        );
+        _depositWithAuthorization(token.balanceOf(msg.sender), new bytes32[](0));
     }
 
     /// @notice DepositAll variant with proof for merkle guest list
@@ -250,10 +223,7 @@ contract RemBadger is
 
     /// @notice Deposit assets into the Sett, and return corresponding shares to the user
     /// @notice Only callable by EOA accounts that pass the _defend() check
-    function depositFor(address _recipient, uint256 _amount)
-        public
-        whenNotPaused
-    {
+    function depositFor(address _recipient, uint256 _amount) public whenNotPaused {
         _defend();
         _blockLocked();
         _blacklisted(msg.sender);
@@ -351,11 +321,7 @@ contract RemBadger is
     /// @dev Provides a pure on-chain way of approximating APY
     function trackFullPricePerShare() external whenNotPaused {
         _onlyAuthorizedActors();
-        emit FullPricePerShareUpdated(
-            getPricePerFullShare(),
-            now,
-            block.number
-        );
+        emit FullPricePerShareUpdated(getPricePerFullShare(), now, block.number);
     }
 
     function pause() external {
@@ -394,15 +360,9 @@ contract RemBadger is
         _mint(recipient, shares);
     }
 
-    function _depositWithAuthorization(uint256 _amount, bytes32[] memory proof)
-        internal
-        virtual
-    {
+    function _depositWithAuthorization(uint256 _amount, bytes32[] memory proof) internal virtual {
         if (address(guestList) != address(0)) {
-            require(
-                guestList.authorized(msg.sender, _amount, proof),
-                "guest-list-authorization"
-            );
+            require(guestList.authorized(msg.sender, _amount, proof), "guest-list-authorization");
         }
         _deposit(_amount);
     }
@@ -413,10 +373,7 @@ contract RemBadger is
         bytes32[] memory proof
     ) internal virtual {
         if (address(guestList) != address(0)) {
-            require(
-                guestList.authorized(_recipient, _amount, proof),
-                "guest-list-authorization"
-            );
+            require(guestList.authorized(_recipient, _amount, proof), "guest-list-authorization");
         }
         _depositFor(_recipient, _amount);
     }
@@ -448,13 +405,7 @@ contract RemBadger is
     /// ===== ERC20 Overrides =====
 
     /// @dev Add blockLock to transfers, users cannot transfer tokens in the same block as a deposit or withdrawal.
-    function transfer(address recipient, uint256 amount)
-        public
-        virtual
-        override
-        whenNotPaused
-        returns (bool)
-    {
+    function transfer(address recipient, uint256 amount) public virtual override whenNotPaused returns (bool) {
         _blockLocked();
         _blacklisted(msg.sender);
         return super.transfer(recipient, amount);
@@ -468,10 +419,7 @@ contract RemBadger is
         _blockLocked();
         _blacklisted(msg.sender);
         _blacklisted(sender);
-        require(
-            !GAC.transferFromDisabled(),
-            "transferFrom: GAC transferFromDisabled"
-        );
+        require(!GAC.transferFromDisabled(), "transferFrom: GAC transferFromDisabled");
         return super.transferFrom(sender, recipient, amount);
     }
 }
