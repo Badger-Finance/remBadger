@@ -3,8 +3,7 @@ from brownie import (
     interface,
     Controller,
     RemBadger,
-    BrikedStrategy,
-    ERC20Upgradeable
+    BrikedStrategy
 )
 from config import (
     BADGER_DEV_MULTISIG,
@@ -161,6 +160,51 @@ def settKeeper(vault):
 @pytest.fixture
 def strategyKeeper(strategy):
     return accounts.at(strategy.keeper(), force=True)
+
+@pytest.fixture
+def rembadger():
+    return RemBadger.at("0x6aF7377b5009d7d154F36FE9e235aE1DA27Aea22")
+
+@pytest.fixture
+def badger(rembadger):
+    return interface.IERC20(rembadger.token())
+
+@pytest.fixture
+def devMultisig():
+    return accounts.at("0xB65cef03b9B89f99517643226d76e286ee999e77", force=True)
+
+@pytest.fixture
+def proxy_admin():
+    """
+     Verify by doing web3.eth.getStorageAt("STRAT_ADDRESS", int(
+        0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103
+    )).hex()
+    """
+    return interface.IProxyAdmin("0x20Dce41Acca85E8222D6861Aa6D23B6C941777bF")
+
+
+@pytest.fixture
+def proxy_admin_gov():
+    """
+        Also found at proxy_admin.owner()
+    """
+    return accounts.at("0x21cf9b77f88adf8f8c98d7e33fe601dc57bc0893", force=True)
+
+
+@pytest.fixture
+def whitelisted_user():
+    return accounts.at("0x138Dd537D56F2F2761a6fC0A2A0AcE67D55480FE", force=True)
+
+@pytest.fixture
+def whale():
+    return accounts.at("0xD0A7A8B98957b9CD3cFB9c0425AbE44551158e9e", force=True)
+
+@pytest.fixture
+def random(want, whale):
+    assert want.balanceOf(whale.address) > 0
+    want.transfer(accounts[9].address, want.balanceOf(whale.address), {"from": whale})
+    assert want.balanceOf(accounts[9].address) > 0
+    return accounts[9]
 
 ## Forces reset before each test
 @pytest.fixture(autouse=True)
