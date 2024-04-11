@@ -7,7 +7,7 @@ import "../../deps/@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable
 import "../../deps/@openzeppelin/contracts-upgradeable/cryptography/MerkleProofUpgradeable.sol";
 
 import "../../interfaces/yearn/BadgerGuestlistApi.sol";
-import "../../interfaces/yearn/BadgerWrapperApi.sol";
+import "../../interfaces/badger/ISett.sol";
 
 /**
  * @notice A basic guest list contract for testing.
@@ -31,6 +31,7 @@ contract VipCappedGuestListBbtcUpgradeable is OwnableUpgradeable {
     bytes32 public guestRoot;
     uint256 public userDepositCap;
     uint256 public totalDepositCap;
+    uint256 public constant BASE = 1e18;
 
     mapping(address => bool) public guests;
 
@@ -68,11 +69,13 @@ contract VipCappedGuestListBbtcUpgradeable is OwnableUpgradeable {
     }
 
     function remainingTotalDepositAllowed() public view returns (uint256) {
-        return totalDepositCap.sub(IERC20(wrapper).totalSupply());
+        uint256 totalDeposited = ISett(wrapper).totalSupply().mul(ISett(wrapper).getPricePerFullShare()).div(BASE);
+        return totalDepositCap.sub(totalDeposited);
     }
 
     function remainingUserDepositAllowed(address user) public view returns (uint256) {
-        return userDepositCap.sub(IERC20(wrapper).balanceOf(user));
+        uint256 deposited = ISett(wrapper).balanceOf(user).mul(ISett(wrapper).getPricePerFullShare()).div(BASE);
+        return userDepositCap.sub(deposited);
     }
 
     /**

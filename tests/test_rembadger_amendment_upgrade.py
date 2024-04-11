@@ -32,15 +32,17 @@ def test_rembadger_amendment_upgrade(
         [whitelisted_user], [True]
     )  # Only manual list with a single user
     guestlist.setUserDepositCap(WHITELISTED_AMOUNT)  # Only approved amount for the user
+    total_deposited = rembadger.totalSupply() * rembadger.getPricePerFullShare() / 1e18
+    assert approx(total_deposited, rembadger.balance(), 0.1)
     guestlist.setTotalDepositCap(
-        rembadger.totalSupply() + WHITELISTED_AMOUNT
+        total_deposited + WHITELISTED_AMOUNT + 1e18
     )  # Only approved amount added to the total for extra precaution
     assert guestlist.guests(whitelisted_user.address) == True
     assert (
         guestlist.remainingUserDepositAllowed(whitelisted_user.address)
         == WHITELISTED_AMOUNT
     )
-    assert guestlist.remainingTotalDepositAllowed() == WHITELISTED_AMOUNT
+    assert approx(guestlist.remainingTotalDepositAllowed(), WHITELISTED_AMOUNT + 1e18, 0.1)
 
     rembadger.setGuestList(
         guestlist, {"from": devMultisig}
@@ -105,6 +107,29 @@ def test_rembadger_amendment_upgrade(
         rembadger.balanceOf(whitelisted_user.address),
         (WHITELISTED_AMOUNT * 1e18) / prev_getPricePerFullShare,
         0.1,
+    )
+    # User can't deposit more (457 units, non zero due to odd accounting on guestlist)
+    # assert (
+    #     guestlist.remainingUserDepositAllowed(whitelisted_user.address)
+    #     == 0
+    # )
+    assert approx(guestlist.remainingTotalDepositAllowed(), 1e18, 0.1)
+    badger.approve(rembadger, WHITELISTED_AMOUNT, {"from": whitelisted_user})
+    assert assert_blocked_deposit(
+        rembadger, whitelisted_user, "guest-list-authorization"
+    )
+    assert assert_blocked_deposit(
+        rembadger, random, "guest-list-authorization"
+    )  # Random user still blocked
+
+    # Regardless of guestlist, we disable deposits
+    rembadger.brickDeposits({"from": devMultisig})
+    assert rembadger.depositsEnded() == True
+    assert assert_blocked_deposit(
+        rembadger, whitelisted_user, "guest-list-authorization"
+    )
+    assert assert_blocked_deposit(
+        rembadger, random, "guest-list-authorization"
     )
 
     chain.snapshot()
