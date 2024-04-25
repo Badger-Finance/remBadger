@@ -43,6 +43,11 @@ import "../interfaces/setth/IGac.sol";
     * RemBadger Version
     * Allows for one time dilution of ppfs by minting extra shares (briked after)
     * DepositBricked to track when deposits can no longer be done (irreversible)
+
+    V1.Rem2.0
+    * Introduces function to enable deposits after they have been bricked
+    * Intended to allow for a single user re-entry via `depositFor` called by Governance (BIP 103 - Amendment 3)
+    * Reference: https://forum.badger.finance/t/bip-103-restitution-amendments/6184/5
 */
 
 contract RemBadger is ERC20Upgradeable, SettAccessControlDefended, PausableUpgradeable {
@@ -71,6 +76,7 @@ contract RemBadger is ERC20Upgradeable, SettAccessControlDefended, PausableUpgra
     event FullPricePerShareUpdated(uint256 value, uint256 indexed timestamp, uint256 indexed blockNumber);
 
     event DepositBricked(uint256 indexed timestamp);
+    event DepositEnabled(uint256 indexed timestamp);
 
     modifier whenNotPaused() override {
         require(!paused(), "Pausable: paused");
@@ -117,6 +123,14 @@ contract RemBadger is ERC20Upgradeable, SettAccessControlDefended, PausableUpgra
         emit DepositBricked(block.timestamp);
     }
 
+    /// @dev Sets `depositsEnded` to false, enabling deposits
+    function enableDeposits() public {
+        _onlyGovernance();
+        depositsEnded = false;
+
+        emit DepositEnabled(block.timestamp);
+    }
+
     /// @dev Mint more shares, diluting the ppfs
     /// @notice This bricks deposit to avoid griefing, can only call once!!
     function mintExtra(uint256 amount) external {
@@ -151,7 +165,7 @@ contract RemBadger is ERC20Upgradeable, SettAccessControlDefended, PausableUpgra
     /// ===== View Functions =====
 
     function version() public view returns (string memory) {
-        return "1.4r - remBadger";
+        return "1.4r - remBadger 2.0";
     }
 
     function getPricePerFullShare() public virtual view returns (uint256) {
