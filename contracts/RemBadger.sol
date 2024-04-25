@@ -46,8 +46,7 @@ import "../interfaces/setth/IGac.sol";
 
     V1.Rem2.0
     * Introduces function to enable deposits after they have been bricked
-    * Removes the governance only modifier from the _depositFor function
-    * Intended to allow for a single deposit from a single user, enforced via Guestlist (BIP 103 - Amendment 3)
+    * Intended to allow for a single user re-entry via `depositFor` called by Governance (BIP 103 - Amendment 3)
     * Reference: https://forum.badger.finance/t/bip-103-restitution-amendments/6184/5
 */
 
@@ -166,7 +165,7 @@ contract RemBadger is ERC20Upgradeable, SettAccessControlDefended, PausableUpgra
     /// ===== View Functions =====
 
     function version() public view returns (string memory) {
-        return "1.4r - remBadger";
+        return "1.4r - remBadger 2.0";
     }
 
     function getPricePerFullShare() public virtual view returns (uint256) {
@@ -356,6 +355,7 @@ contract RemBadger is ERC20Upgradeable, SettAccessControlDefended, PausableUpgra
     }
 
     function _depositFor(address recipient, uint256 _amount) internal virtual {
+        _onlyGovernance();
         require(!depositsEnded, "No longer accepting Deposits");
         uint256 _pool = balance();
         uint256 _before = token.balanceOf(address(this));

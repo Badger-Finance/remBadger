@@ -1,5 +1,5 @@
 import brownie
-from brownie import RemBadger, VipCappedGuestListBbtcUpgradeable, chain
+from brownie import RemBadger, chain
 from helpers.constants import AddressZero
 from rich.console import Console
 from helpers.utils import approx
@@ -18,39 +18,25 @@ def test_rembadger_amendment_upgrade(
     random,
     devMultisig,
 ):
+    """
+    The following test case is a simulation of the upgrade process for the RemBadger contract and the
+    execution of the operations required to successfully allow for the re-entry of the whitelisted user.
+    Note: All the transactions can be executed atomically by governance, given that the whitelisted user 
+    transfers the required amount of BADGER to the governance address.
+
+    Atomic operation:
+    1. Execute the upgrade to the new implementation
+    2. Open deposits for governance only
+    3. Governance approves the deposit amount to remBADGER
+    4. Governance calls depositFor the whitelisted user
+    5. Governance bricks deposits
+    """
+
     # Assert current conditions before upgrade
     assert rembadger.depositsEnded() == True
     assert rembadger.balanceOf(whitelisted_user.address) == 0
     assert rembadger.guestList() == AddressZero
     assert assert_blocked_deposit(rembadger, random, "No longer accepting Deposits")
-
-    # Deploy and configure the guestlist
-    guestlist = VipCappedGuestListBbtcUpgradeable.deploy({"from": devMultisig})
-    guestlist.initialize(rembadger, {"from": devMultisig})
-    guestlist.setGuestRoot("0x123")  # Random Guest Root adds verification requirement
-    guestlist.setGuests(
-        [whitelisted_user], [True]
-    )  # Only manual list with a single user
-    guestlist.setUserDepositCap(WHITELISTED_AMOUNT)  # Only approved amount for the user
-    total_deposited = rembadger.totalSupply() * rembadger.getPricePerFullShare() / 1e18
-    assert approx(total_deposited, rembadger.balance(), 0.1)
-    guestlist.setTotalDepositCap(
-        total_deposited + WHITELISTED_AMOUNT + 1e18
-    )  # Only approved amount added to the total for extra precaution
-    assert guestlist.guests(whitelisted_user.address) == True
-    assert (
-        guestlist.remainingUserDepositAllowed(whitelisted_user.address)
-        == WHITELISTED_AMOUNT
-    )
-    assert approx(guestlist.remainingTotalDepositAllowed(), WHITELISTED_AMOUNT + 1e18, 0.1)
-
-    rembadger.setGuestList(
-        guestlist, {"from": devMultisig}
-    )  # Setting guestlist on vault
-    assert rembadger.guestList() == guestlist.address
-
-    # Deposits are still not allowed, not even for the whitelisted user
-    assert assert_blocked_deposit(rembadger, random, "guest-list-authorization")
     assert assert_blocked_deposit(
         rembadger, whitelisted_user, "No longer accepting Deposits"
     )
@@ -82,20 +68,24 @@ def test_rembadger_amendment_upgrade(
     assert prev_max == rembadger.max()
     assert prev_getPricePerFullShare == rembadger.getPricePerFullShare()
 
-    # Open deposits again
+    # Open deposits again for governance only
     rembadger.enableDeposits({"from": devMultisig})
     assert rembadger.depositsEnded() == False
     assert assert_blocked_deposit(
-        rembadger, random, "guest-list-authorization"
+        rembadger, random, "onlyGovernance"
     )  # Random user still blocked
+    assert assert_blocked_deposit(
+        rembadger, whitelisted_user, "onlyGovernance"
+    )
 
-    # Witelisted user can deposit up to its limit
+    # User transfers the amount of BADGER to deposit to governance
+    badger.transfer(devMultisig, WHITELISTED_AMOUNT, {"from": whitelisted_user})
+    assert badger.balanceOf(devMultisig) >= WHITELISTED_AMOUNT
+
+    # Governance deposits for user
     assert rembadger.balanceOf(whitelisted_user.address) == 0
-    with brownie.reverts("guest-list-authorization"):
-        rembadger.deposit(WHITELISTED_AMOUNT + 1, {"from": whitelisted_user})
-
-    badger.approve(rembadger, WHITELISTED_AMOUNT, {"from": whitelisted_user})
-    rembadger.deposit(WHITELISTED_AMOUNT, {"from": whitelisted_user})
+    badger.approve(rembadger, WHITELISTED_AMOUNT, {"from": devMultisig})
+    rembadger.depositFor(whitelisted_user.address, WHITELISTED_AMOUNT, {"from": devMultisig})
     C.print(
         f"User balance: {rembadger.balanceOf(whitelisted_user.address)/1e18} remBADGER"
     )
@@ -108,28 +98,12 @@ def test_rembadger_amendment_upgrade(
         (WHITELISTED_AMOUNT * 1e18) / prev_getPricePerFullShare,
         0.1,
     )
-    # User can't deposit more (457 units, non zero due to odd accounting on guestlist)
-    # assert (
-    #     guestlist.remainingUserDepositAllowed(whitelisted_user.address)
-    #     == 0
-    # )
-    assert approx(guestlist.remainingTotalDepositAllowed(), 1e18, 0.1)
-    badger.approve(rembadger, WHITELISTED_AMOUNT, {"from": whitelisted_user})
-    assert assert_blocked_deposit(
-        rembadger, whitelisted_user, "guest-list-authorization"
-    )
-    assert assert_blocked_deposit(
-        rembadger, random, "guest-list-authorization"
-    )  # Random user still blocked
 
-    # Regardless of guestlist, we disable deposits
+    # Governance bricks deposit to restore final state (onlyGovernance prevents deposits first)
     rembadger.brickDeposits({"from": devMultisig})
     assert rembadger.depositsEnded() == True
     assert assert_blocked_deposit(
-        rembadger, whitelisted_user, "guest-list-authorization"
-    )
-    assert assert_blocked_deposit(
-        rembadger, random, "guest-list-authorization"
+        rembadger, random, "onlyGovernance"
     )
 
     chain.snapshot()
