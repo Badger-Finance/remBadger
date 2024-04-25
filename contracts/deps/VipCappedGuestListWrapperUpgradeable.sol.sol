@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0
-pragma solidity 0.6.12;
+pragma solidity >=0.6.0 <0.7.0;
 pragma experimental ABIEncoderV2;
 
 import "../../deps/@openzeppelin/contracts-upgradeable/math/SafeMathUpgradeable.sol";
 import "../../deps/@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "../../deps/@openzeppelin/contracts-upgradeable/cryptography/MerkleProofUpgradeable.sol";
-
-import "../../interfaces/yearn/BadgerGuestlistApi.sol";
-import "../../interfaces/badger/ISett.sol";
+import "interfaces/yearn/GuestlistApi.sol";
+import "interfaces/yearn/BadgerWrapperApi.sol";
 
 /**
  * @notice A basic guest list contract for testing.
@@ -23,7 +22,7 @@ import "../../interfaces/badger/ISett.sol";
  * A variant of the yearn AffiliateToken that supports guest list control of deposits
  * A guest list that gates access by merkle root and a TVL cap
  */
-contract VipCappedGuestListBbtcUpgradeable is OwnableUpgradeable {
+contract VipCappedGuestListWrapperUpgradeable is OwnableUpgradeable {
     using SafeMathUpgradeable for uint256;
 
     address public wrapper;
@@ -31,17 +30,13 @@ contract VipCappedGuestListBbtcUpgradeable is OwnableUpgradeable {
     bytes32 public guestRoot;
     uint256 public userDepositCap;
     uint256 public totalDepositCap;
-    uint256 public constant BASE = 1e18;
 
     mapping(address => bool) public guests;
-
-    address public geyser;
 
     event ProveInvitation(address indexed account, bytes32 indexed guestRoot);
     event SetGuestRoot(bytes32 indexed guestRoot);
     event SetUserDepositCap(uint256 cap);
     event SetTotalDepositCap(uint256 cap);
-    event SetGeyser(address geyser);
 
     /**
      * @notice Create the test guest list, setting the message sender as
@@ -53,10 +48,6 @@ contract VipCappedGuestListBbtcUpgradeable is OwnableUpgradeable {
         __Ownable_init();
         wrapper = wrapper_;
     }
-    
-    function setWrapper(address wrapper_) public onlyOwner {
-        wrapper = wrapper_;
-    }
 
     /**
      * @notice Invite guests or kick them from the party.
@@ -64,18 +55,31 @@ contract VipCappedGuestListBbtcUpgradeable is OwnableUpgradeable {
      * @param _invited A flag for each guest at the matching index, inviting or
      * uninviting the guest.
      */
-    function setGuests(address[] calldata _guests, bool[] calldata _invited) external onlyOwner {
+    function setGuests(address[] calldata _guests, bool[] calldata _invited)
+        external
+        onlyOwner
+    {
         _setGuests(_guests, _invited);
     }
 
-    function remainingTotalDepositAllowed() public view returns (uint256) {
-        uint256 totalDeposited = ISett(wrapper).totalSupply().mul(ISett(wrapper).getPricePerFullShare()).div(BASE);
-        return totalDepositCap.sub(totalDeposited);
+    function vaultBalance(address account) public view returns (uint256) {
+        return BadgerWrapperAPI(wrapper).totalVaultBalance(account);
     }
 
-    function remainingUserDepositAllowed(address user) public view returns (uint256) {
-        uint256 deposited = ISett(wrapper).balanceOf(user).mul(ISett(wrapper).getPricePerFullShare()).div(BASE);
-        return userDepositCap.sub(deposited);
+    function wrapperBalance(address user) public view returns (uint256) {
+        return BadgerWrapperAPI(wrapper).totalWrapperBalance(user);
+    }
+
+    function remainingTotalDepositAllowed() public view returns (uint256) {
+        return totalDepositCap.sub(vaultBalance(wrapper));
+    }
+
+    function remainingUserDepositAllowed(address user)
+        public
+        view
+        returns (uint256)
+    {
+        return userDepositCap.sub(wrapperBalance(user));
     }
 
     /**
@@ -83,7 +87,9 @@ contract VipCappedGuestListBbtcUpgradeable is OwnableUpgradeable {
      * @notice Note that the list is designed to ONLY EXPAND in future instances
      * @notice The admin does retain the ability to ban individual addresses
      */
-    function proveInvitation(address account, bytes32[] calldata merkleProof) public {
+    function proveInvitation(address account, bytes32[] calldata merkleProof)
+        public
+    {
         // Verify Merkle Proof
         require(_verifyInvitationProof(account, merkleProof));
 
@@ -128,7 +134,11 @@ contract VipCappedGuestListBbtcUpgradeable is OwnableUpgradeable {
      * from the wrapper tests' perspective this is a pass/fail call anyway.
      * @param _guest The guest's address to check.
      */
-    function authorized(address _guest, uint256 _amount, bytes32[] calldata _merkleProof) external view returns (bool) {
+    function authorized(
+        address _guest,
+        uint256 _amount,
+        bytes32[] calldata _merkleProof
+    ) external view returns (bool) {
         // Yes: If the user is on the list, and under the cap
         // Yes: If the user is not on the list, supplies a valid proof (thereby being added to the list), and is under the cap
         // No: If the user is not on the list, does not supply a valid proof, or is over the cap
@@ -146,14 +156,20 @@ contract VipCappedGuestListBbtcUpgradeable is OwnableUpgradeable {
         }
 
         // If the user was previously invited, or proved invitiation via list, verify if the amount to deposit keeps them under the cap
-        if (invited && remainingUserDepositAllowed(_guest) >= _amount && remainingTotalDepositAllowed() >= _amount) {
+        if (
+            invited &&
+            remainingUserDepositAllowed(_guest) >= _amount &&
+            remainingTotalDepositAllowed() >= _amount
+        ) {
             return true;
         } else {
             return false;
         }
     }
 
-    function _setGuests(address[] memory _guests, bool[] memory _invited) internal {
+    function _setGuests(address[] memory _guests, bool[] memory _invited)
+        internal
+    {
         require(_guests.length == _invited.length);
         for (uint256 i = 0; i < _guests.length; i++) {
             if (_guests[i] == address(0)) {
@@ -163,7 +179,10 @@ contract VipCappedGuestListBbtcUpgradeable is OwnableUpgradeable {
         }
     }
 
-    function _verifyInvitationProof(address account, bytes32[] calldata merkleProof) internal view returns (bool) {
+    function _verifyInvitationProof(
+        address account,
+        bytes32[] calldata merkleProof
+    ) internal view returns (bool) {
         bytes32 node = keccak256(abi.encodePacked(account));
         return MerkleProofUpgradeable.verify(merkleProof, guestRoot, node);
     }
