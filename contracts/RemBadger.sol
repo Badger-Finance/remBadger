@@ -355,8 +355,8 @@ contract RemBadger is ERC20Upgradeable, SettAccessControlDefended, PausableUpgra
     }
 
     function _depositFor(address recipient, uint256 _amount) internal virtual {
-        _onlyGovernance();
         require(!depositsEnded, "No longer accepting Deposits");
+        _onlyGovernance();
         uint256 _pool = balance();
         uint256 _before = token.balanceOf(address(this));
         token.safeTransferFrom(msg.sender, address(this), _amount);

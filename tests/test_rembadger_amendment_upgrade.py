@@ -99,11 +99,12 @@ def test_rembadger_amendment_upgrade(
         0.1,
     )
 
-    # Governance bricks deposit to restore final state (onlyGovernance prevents deposits first)
+    # Governance bricks deposit to restore final state
     rembadger.brickDeposits({"from": devMultisig})
     assert rembadger.depositsEnded() == True
+    assert assert_blocked_deposit(rembadger, random, "No longer accepting Deposits")
     assert assert_blocked_deposit(
-        rembadger, random, "onlyGovernance"
+        rembadger, whitelisted_user, "No longer accepting Deposits"
     )
 
     chain.snapshot()
